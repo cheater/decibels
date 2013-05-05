@@ -1,0 +1,10 @@
+This is a conversion table between dBV, dBu, Volts RMS, and Volts peak-to-peak
+(the last assuming a sinewave). I couldn't find a good precise table that also
+had all the values which one could need, so I created this with bc, the
+arbitrary-precision calculator, and I used arbitrary-precision numbers in
+Python to process the formatting. I hope this is useful for you. You can
+execute ./run to re-create the table on your computer, especially if you want a
+different amount of precision or different values. You can also just read the
+file ``table´´ for an example of output.
+
+You can find the licensing information in the LICENSE file.

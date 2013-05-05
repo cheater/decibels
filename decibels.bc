@@ -1,0 +1,270 @@
+#!/usr/bin/bc -ql
+scale=100;
+
+# LICENSE
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+# ABOUT THIS PROGRAM
+#
+# Note: in this file, log() means decimal logarithm, NOT natural logarithm!
+#
+# Note: dBv is exactly the same as dBu and different than dBV!!! But since bc
+# does not allow capital letters in function names, I use "dbv" in the names!!!
+#
+# The level L in dB of a voltage V is equal to 20 * log (V / V0) where V0 is
+# the reference voltage. The reference voltage for dBu is sqrt(0.6) Volts and
+# for dBV is 1 Volt.
+#
+# The level in dBu is the RMS voltage relative to sqrt(0.6) Volt which is
+# approximately equal to 0.7746 Volts or -2.218 dBV. It comes from the
+# computation: x Volts = sqrt(600 Ohm * 0.001 Watt).
+#
+# The level in dBu of voltage v is: L = 20 * log (v / sqrt(0.6))
+# which is the same as L = 20 * log(v) - 20 * log(sqrt(0.6))
+# which is the same as L = 20 * log(v) - log(0.6^10)
+# sqrt(0.6) = 0.7745966692414833770
+# log(0.6^10) ~= -2.2184874961635636749123320202039166403168125434719559385970689856766265794191436747010439223419752645
+# # therefore L = 20 * log(v) + 2.2184874961635636749123320202039166403168125434719559385970689856766265794191436747010439223419752645
+# We'll use this constant in order to speed up computation. Forty digits should
+# be good enough.
+#
+# Similarly, the level in dBV of voltage v is: L = 20 * log (v / 1)
+# which is equal to 20 * log(v)
+# We can use this in the calculation of dBu.
+
+define v2dbv(v) {
+        return 20 * log(v);
+        }
+
+define dbuconstant() {
+        return 2.2184874961635636749123320202039166403168125434719559385970689856766265794191436747010439223419752645;
+        }
+
+define dbv2dbu(db) {
+        return db + dbuconstant();
+        }
+
+define dbu2dbv(db) {
+        return db - dbuconstant();
+        }
+
+define v2dbu(v) {
+        return dbv2dbu(v2dbv(v));
+        }
+
+define log(x) {
+        # decimal logarithm
+        return l(x)/l(10);
+        }
+
+# To get voltage from dBV, we need to solve the following equation for v:
+# L = 20 * log(v)
+# L/20 = log(v)
+# v = 10^(L/20)
+# since bc does not support power well, we need to work around it:
+#
+# x=a^b
+# l(x)=l(a^b)
+# l(x)=b*l(a)
+# e(l(x))=e(b*l(a))
+# x=e(b*l(a)
+#
+# (bear in mind that the -l switch to bc makes a standard library available,
+# and l and e are the natural logarithm and exponential function)
+
+define exp(base, exponent) {
+        return e(exponent*l(base));
+        }
+
+define dbv2v(db) {
+        return exp(10, db/20);
+        }
+
+define dbu2v(db) {
+        return dbv2v(dbu2dbv(db));
+        }
+
+# All decibel values talk about RMS volts. For pure sinewaves, the RMS voltage
+# is related to peak-to-peak voltage by the following formula:
+# vpp = vrms * sqrt(2)
+# therefore, vrms = vpp / sqrt(2)
+
+define v2vpp(v) {
+        # convert RMS voltage of a sine wave to its peak-to-peak voltage.
+        return v * sqrt(2);
+        }
+
+define vpp2v(vpp) {
+        # convert peak-to-peak voltage to RMS voltage.
+        return vpp/sqrt(2);
+        }
+
+define dbvtable(start, end, step) {
+        print "[ ";
+        ignored = dbvtable_raw(start, end, step);
+        print "]";
+        }
+
+define dbvtable_raw(start, end, step) {
+        # Outputs the equivalent values in dBV, dBu, Vrms and Vpp.
+        # You have to approach the end from above.
+        auto dbv;
+        for (dbv = start; dbv >= end; dbv = dbv + step) {
+                #print "[ ";
+                print dbv; print ", ";
+                print dbv2dbu(dbv); print ", ";
+                print dbv2v(dbv); print ", ";
+                print v2vpp(dbv2v(dbv));
+                #print "],";
+                print "\n  ";
+                }
+        }
+
+define dbutable(start, end, step) {
+        print "[ ";
+        ignored = dbutable_raw(start, end, step);
+        print "]";
+        }
+
+define dbutable_raw(start, end, step) {
+        # Outputs the equivalent values in dBV, dBu, Vrms and Vpp.
+        # You have to approach the end from above.
+        auto dbu;
+        for (dbu = start; dbu >= end; dbu = dbu + step) {
+                #print "[ ";
+                print dbu2dbv(dbu); print ", ";
+                print dbu; print ", ";
+                print dbv2v(dbu2dbv(dbu)); print ", ";
+                print v2vpp(dbv2v(dbu2dbv(dbu)));
+                #print "],";
+                print "\n  ";
+                }
+        }
+
+define vtable_lin(start, end, step) {
+        print "[ ";
+        ignored = vtable_lin_raw(start, end, step);
+        print "]";
+        }
+
+define vtable_lin_raw(start, end, step) {
+        # Outputs the equivalent values in dBV, dBu, Vrms and Vpp.
+        # You have to approach the end from above.
+        # The step is linear.
+        auto v;
+        for (v = start; v >= end; v = v + step) {
+                #print "[ ";
+                print v2dbv(v); print ", ";
+                print dbv2dbu(v2dbv(v)); print ", ";
+                print v; print ", ";
+                print v2vpp(v);
+                #print "],";
+                print "\n  ";
+                }
+        }
+
+define vtable_exp(start, iterations, step) {
+        print "[ ";
+        ignored = vtable_exp_raw(start, iterations, step);
+        print "]";
+        }
+
+define vtable_exp_raw(start, iterations, step) {
+        # Outputs the equivalent values in dBV, dBu, Vrms and Vpp.
+        # The step is exponential.
+        auto v, iteration;
+        iteration = 0;
+        for (v = start; iteration <= iterations; v = v * step) {
+                print " ";
+                #print "[ ";
+                print v2dbv(v); print ", ";
+                print dbv2dbu(v2dbv(v)); print ", ";
+                print start; print " * "; print step; print "^"; print iteration; print " = "; print v; print ", ";
+                print v2vpp(v);
+                #print "],";
+                print "\n  ";
+                iteration = iteration + 1;
+                }
+        }
+
+define vpptable_lin(start, end, step) {
+        print "[ ";
+        ignored = vpptable_lin_raw(start, end, step);
+        print "]";
+        }
+
+define vpptable_lin_raw(start, end, step) {
+        # Outputs the equivalent values in dBV, dBu, Vrms and Vpp.
+        # You have to approach the end from above.
+        # The step is linear.
+        auto vpp;
+        for (vpp = start; vpp >= end; vpp = vpp + step) {
+                #print "[ ";
+                print v2dbv(vpp2v(vpp)); print ", ";
+                print dbv2dbu(v2dbv(vpp2v(vpp))); print ", ";
+                print vpp2v(vpp); print ", ";
+                print vpp;
+                #print "],";
+                print "\n  ";
+                }
+        }
+
+define vpptable_exp(start, iterations, step) {
+        print "[ ";
+        ignored = vpptable_exp_raw(start, iterations, step);
+        print "]";
+        }
+
+define vpptable_exp_raw(start, iterations, step) {
+        # Outputs the equivalent values in dBV, dBu, Vrms and Vpp.
+        # The step is exponential.
+        auto vpp, iteration;
+        iteration = 0;
+        for (vpp = start; iteration <= iterations; vpp = vpp * step) {
+                print "  ";
+                #print "[ ";
+                print v2dbv(vpp2v(vpp)); print ", ";
+                print dbv2dbu(v2dbv(vpp2v(vpp))); print ", ";
+                print vpp2v(vpp); print ", ";
+                print start; print " * "; print step; print "^"; print iteration; print " = "; print vpp;
+                #print "],";
+                print "\n  ";
+                iteration = iteration + 1;
+                }
+        }
+
+#print "[ ";
+ignore = dbvtable_raw(30, -160, -3);
+ignore = dbvtable_raw(30, -160, -2);
+ignore = dbutable_raw(20, -80, -3);
+ignore = dbutable_raw(20, -80, -2);
+ignore = vtable_lin_raw(100, 1, -1);
+ignore = vtable_lin_raw(16, 0.5, -0.5);
+ignore = vtable_lin_raw(1.5, 0.1, -0.1);
+ignore = vtable_lin_raw(0.09, 0.01, -0.01);
+ignore = vtable_exp_raw(1, 4, 2);
+ignore = vtable_exp_raw(1, 28, 0.5);
+ignore = vtable_exp_raw(2, 100, 0.99);
+ignore = vtable_lin_raw(100, 1, -1);
+ignore = vtable_lin_raw(24, 0.5, -0.5);
+ignore = vtable_lin_raw(2.5, 0.1, -0.1);
+ignore = vtable_lin_raw(0.09, 0.01, -0.01);
+ignore = vpptable_exp_raw(1, 4, 2);
+ignore = vpptable_exp_raw(1, 28, 0.5);
+ignore = vpptable_exp_raw(2, 100, 0.99);
+#print "]";
+
+quit;
